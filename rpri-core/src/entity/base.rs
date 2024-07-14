@@ -1,46 +1,78 @@
 use std::fmt::{Display, Error as FmtError, Formatter};
+use std::str::FromStr;
 
 /// Type that distinguish entities from each other.
 pub type EntityId = usize;
 
 /// A valid name of atoms or predicates.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct Identifier(String);
+pub struct Identifier {
+    value: String,
+    quoted: bool,
+}
 
 impl Identifier {
+    fn new(value: String, quoted: bool) -> Self {
+        Self { value, quoted }
+    }
+
     pub fn inner(&self) -> &str {
-        &self.0
+        &self.value
     }
 }
 
-impl From<String> for Identifier {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
+impl FromStr for Identifier {
+    type Err = ();
 
-impl From<&str> for Identifier {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
+    /// Parse a Prolog identifier from string. A valid Prolog identifier should
+    /// only contains alphabets, digits and underscores with a lowercase char or
+    /// underscore as head, otherwise quotes are needed.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let chars: Vec<_> = s.chars().collect();
+
+        let (Some(&first), Some(&last)) = (chars.first(), chars.last()) else {
+            return Err(());
+        };
+
+        // Check whether it's quoted.
+        if chars.len() < 2 || (first != '\'' && last != '\'') {
+            if !first.is_ascii_lowercase() && first != '_' {
+                Err(())
+            } else if s.chars().any(|c| !c.is_ascii_alphanumeric() && c != '_') {
+                Err(())
+            } else {
+                Ok(Self::new(s.into(), false))
+            }
+        } else {
+            // Get inner content.
+            let Some(chars) = chars.as_slice().get(1..(chars.len() - 1)) else {
+                return Err(());
+            };
+
+            let iter = chars.iter().rev();
+            // Occurrence of a single quote not followed by a backslash inside a
+            // pair of quotes is invalid.
+            let invalid_quote = iter
+                .clone()
+                .zip(iter.skip(1))
+                .any(|(&current, &next)| current == '\'' && next != '\\')
+                || chars.first().is_some_and(|&c| c == '\'');
+
+            if invalid_quote {
+                Err(())
+            } else {
+                Ok(Self::new(chars.into_iter().collect(), true))
+            }
+        }
     }
 }
 
 impl Display for Identifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
-        let valid_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
-
-        if self.0.is_empty() {
-            write!(f, "''")
-        } else if self.0.chars().any(|c| !valid_char(c)) {
-            write!(f, "'{}'", self.0)
-        } else if let Some(c) = self.0.chars().next() {
-            if c.is_ascii_digit() || c.is_uppercase() {
-                write!(f, "'{}'", self.0)
-            } else {
-                write!(f, "{}", self.0)
-            }
+        if self.quoted {
+            write!(f, "'{}'", self.value)
         } else {
-            unreachable!();
+            write!(f, "{}", self.value)
         }
     }
 }
@@ -50,23 +82,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn identifier_parse() {
+        assert_eq!("atom".parse(), Ok(Identifier::new("atom".into(), false)));
+        assert_eq!("_atom".parse(), Ok(Identifier::new("_atom".into(), false)));
+        assert_eq!("a1".parse(), Ok(Identifier::new("a1".into(), false)));
+        assert_eq!(r"' \''".parse(), Ok(Identifier::new(r" \'".into(), true)));
+        assert_eq!("''".parse(), Ok(Identifier::new("".into(), true)));
+        assert_eq!("".parse(), Err::<Identifier, _>(()));
+        assert_eq!("Atom".parse(), Err::<Identifier, _>(()));
+        assert_eq!("1Atom".parse(), Err::<Identifier, _>(()));
+        assert_eq!(r"' ' '".parse(), Err::<Identifier, _>(()));
+        assert_eq!("'".parse(), Err::<Identifier, _>(()));
+    }
+
+    #[test]
     fn identifier_display() {
-        let atom = Identifier::from("atom");
+        let atom = "atom".parse::<Identifier>().unwrap();
         assert_eq!(atom.to_string(), "atom");
 
-        let atom_empty = Identifier::from("");
-        assert_eq!(atom_empty.to_string(), "''");
-
-        let atom_with_spaces = Identifier::from("atom with spaces");
+        let atom_with_spaces = "'atom with spaces'".parse::<Identifier>().unwrap();
         assert_eq!(atom_with_spaces.to_string(), "'atom with spaces'");
-
-        let atom_string = Identifier::from("*an-atom*");
-        assert_eq!(atom_string.to_string(), "'*an-atom*'");
-
-        let atom_starts_with_digit = Identifier::from("0atom");
-        assert_eq!(atom_starts_with_digit.to_string(), "'0atom'");
-
-        let atom_starts_with_uppercase = Identifier::from("Atom");
-        assert_eq!(atom_starts_with_uppercase.to_string(), "'Atom'");
     }
 }

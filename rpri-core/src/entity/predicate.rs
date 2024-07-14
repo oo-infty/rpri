@@ -135,31 +135,37 @@ mod tests {
 
     #[test]
     fn signature_display() {
-        let signature = Signature::new("pred".into(), 1);
+        let signature = Signature::new("pred".parse().unwrap(), 1);
         assert_eq!(signature.to_string(), "pred/1");
 
-        let signature_quoted_identifier = Signature::new("a pred".into(), 2);
+        let signature_quoted_identifier = Signature::new("'a pred'".parse().unwrap(), 2);
         assert_eq!(signature_quoted_identifier.to_string(), "'a pred'/2");
     }
 
     #[test]
     fn predicate_definition_equality() {
-        let predicate1 = PredicateDefinition::new(Signature::new("predicate".into(), 1), 42);
-        let predicate2 = PredicateDefinition::new(Signature::new("predicate".into(), 1), 42);
+        let predicate1 =
+            PredicateDefinition::new(Signature::new("predicate".parse().unwrap(), 1), 42);
+        let predicate2 =
+            PredicateDefinition::new(Signature::new("predicate".parse().unwrap(), 1), 42);
         assert_eq!(predicate1, predicate2);
 
-        let predicate1 = PredicateDefinition::new(Signature::new("predicate1".into(), 1), 42);
-        let predicate2 = PredicateDefinition::new(Signature::new("predicate2".into(), 1), 43);
+        let predicate1 =
+            PredicateDefinition::new(Signature::new("predicate1".parse().unwrap(), 1), 42);
+        let predicate2 =
+            PredicateDefinition::new(Signature::new("predicate2".parse().unwrap(), 1), 43);
         assert_ne!(predicate1, predicate2);
 
-        let predicate1 = PredicateDefinition::new(Signature::new("predicate".into(), 1), 42);
-        let predicate2 = PredicateDefinition::new(Signature::new("predicate".into(), 2), 43);
+        let predicate1 =
+            PredicateDefinition::new(Signature::new("predicate".parse().unwrap(), 1), 42);
+        let predicate2 =
+            PredicateDefinition::new(Signature::new("predicate".parse().unwrap(), 2), 43);
         assert_ne!(predicate1, predicate2);
     }
 
     #[test]
     fn predicate_handle_build() {
-        let value = Identifier::from("predicate");
+        let value = "predicate".parse().unwrap();
         let entity_id = 42;
         let signature = Signature::new(value, 1);
         let predicate = PredicateDefinition::new(signature.clone(), entity_id);
@@ -176,14 +182,14 @@ mod tests {
     #[test]
     fn predicate_handle_equality() {
         let handle1 = PredicateHandle::from(PredicateDefinition::new(
-            Signature::new("predicate".into(), 1),
+            Signature::new("predicate".parse().unwrap(), 1),
             42,
         ));
         let handle2 = handle1.clone();
         assert_eq!(handle1, handle2);
 
         let handle3 = PredicateHandle::from(PredicateDefinition::new(
-            Signature::new("predicate2".into(), 1),
+            Signature::new("predicate2".parse().unwrap(), 1),
             43,
         ));
         assert_ne!(handle1, handle3);

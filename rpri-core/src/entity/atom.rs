@@ -98,18 +98,18 @@ mod tests {
 
     #[test]
     fn atom_definition_equality() {
-        let atom1 = AtomDefinition::new("atom".into(), 42);
-        let atom2 = AtomDefinition::new("atom".into(), 42);
+        let atom1 = AtomDefinition::new("atom".parse().unwrap(), 42);
+        let atom2 = AtomDefinition::new("atom".parse().unwrap(), 42);
         assert_eq!(atom1, atom2);
 
-        let atom1 = AtomDefinition::new("atom1".into(), 42);
-        let atom2 = AtomDefinition::new("atom2".into(), 43);
+        let atom1 = AtomDefinition::new("atom1".parse().unwrap(), 42);
+        let atom2 = AtomDefinition::new("atom2".parse().unwrap(), 43);
         assert_ne!(atom1, atom2);
     }
 
     #[test]
     fn atom_handle_build() {
-        let identifier = Identifier::from("atom");
+        let identifier = "atom".parse::<Identifier>().unwrap();
         let entity_id = 42;
         let atom = AtomDefinition::new(identifier.clone(), entity_id);
 
@@ -124,11 +124,11 @@ mod tests {
 
     #[test]
     fn atom_handle_equality() {
-        let handle1 = AtomHandle::from(AtomDefinition::new("atom".into(), 42));
+        let handle1 = AtomHandle::from(AtomDefinition::new("atom".parse().unwrap(), 42));
         let handle2 = handle1.clone();
         assert_eq!(handle1, handle2);
 
-        let handle3 = AtomHandle::from(AtomDefinition::new("atom2".into(), 43));
+        let handle3 = AtomHandle::from(AtomDefinition::new("atom2".parse().unwrap(), 43));
         assert_ne!(handle1, handle3);
         assert_ne!(handle2, handle3);
     }
