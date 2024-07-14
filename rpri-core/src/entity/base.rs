@@ -61,7 +61,7 @@ impl FromStr for Identifier {
             if invalid_quote {
                 Err(())
             } else {
-                Ok(Self::new(chars.into_iter().collect(), true))
+                Ok(Self::new(chars.iter().collect(), true))
             }
         }
     }
@@ -74,6 +74,43 @@ impl Display for Identifier {
         } else {
             write!(f, "{}", self.value)
         }
+    }
+}
+
+/// A valid name of a variable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VariableIdentifier(String);
+
+impl VariableIdentifier {
+    pub fn inner(&self) -> &str {
+        &self.0
+    }
+}
+
+impl FromStr for VariableIdentifier {
+    type Err = ();
+
+    /// Parse a Prolog identifier from string for a variable. A valid Prolog
+    /// identifier should for a variable only contains alphabets, digits and
+    /// underscores with a uppercase char or underscore as head.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let Some(first) = s.chars().next() else {
+            return Err(());
+        };
+
+        if !first.is_ascii_uppercase() {
+            Err(())
+        } else if s.chars().any(|c| !c.is_ascii_alphanumeric() && c != '_') {
+            Err(())
+        } else {
+            Ok(Self(s.into()))
+        }
+    }
+}
+
+impl Display for VariableIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

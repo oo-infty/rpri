@@ -15,7 +15,7 @@
           overlays = [ (import inputs.rust-overlay) ];
         };
         rust = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-analyzer" ]; 
+          extensions = [ "rust-analyzer" "rust-src" ]; 
         };
       in {
         devShells.default = let
