@@ -62,11 +62,11 @@ impl ExpressionKind {
 /// Basic node of expression trees.
 #[derive(Debug, Clone)]
 pub struct ExpressionNode {
-    arguments: Vec<Argument>,
-    elements: ExpressionElement,
-    kind: ExpressionKind,
-    negated: bool,
-    entity_id: EntityId,
+    pub(super) arguments: Vec<Argument>,
+    pub(super) elements: ExpressionElement,
+    pub(super) kind: ExpressionKind,
+    pub(super) negated: bool,
+    pub(super) entity_id: EntityId,
 }
 
 impl Expression for ExpressionNode {
@@ -162,23 +162,12 @@ impl Display for ExpressionNode {
 
 /// Upper-level representation of an expression node, providing classification
 /// of expressions depending on the inner node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[enum_dispatch(Expression)]
 pub enum ExpressionView<'a> {
     Predicate(PredicateView<'a>),
     Conjunction(ConjunctionView<'a>),
     Disjunction(DisjunctionView<'a>),
-}
-
-impl PartialEq for ExpressionView<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Predicate(s), Self::Predicate(o)) => s.eq(o),
-            (Self::Conjunction(s), Self::Conjunction(o)) => s.eq(o),
-            (Self::Disjunction(s), Self::Disjunction(o)) => s.eq(o),
-            _ => false,
-        }
-    }
 }
 
 impl ExpressionView<'_> {
@@ -192,8 +181,6 @@ impl ExpressionView<'_> {
         }
     }
 }
-
-impl Eq for ExpressionView<'_> {}
 
 impl Display for ExpressionView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
