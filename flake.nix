@@ -23,7 +23,7 @@
         in
           mkShell {
             buildInputs = with pkgs; [ rust ];
-            packages = with pkgs; [ nil scryer-prolog ];
+            packages = with pkgs; [ nil swiProlog ];
           };
       };
     };
