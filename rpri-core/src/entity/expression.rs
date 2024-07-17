@@ -3,12 +3,15 @@ use std::ops::BitXor;
 use std::slice::Iter;
 
 use enum_dispatch::enum_dispatch;
+use snafu::prelude::*;
 
 use crate::entity::atom::AtomHandle;
 use crate::entity::base::VariableIdentifier;
-use crate::entity::predicate::{Predicate, PredicateHandle};
+use crate::entity::predicate::{Predicate, PredicateHandle, Signature};
 
-/// Argument of predicates, which can be a variable or constant.
+/// Argument of predicates, which can be a variable or constant. Only when this
+/// structure is associated with a predicate or its negation does the order of
+/// arguments make sense.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Argument {
     Variable(VariableIdentifier),
@@ -60,10 +63,76 @@ impl ExpressionKind {
 /// Basic node of expression trees.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpressionNode {
-    pub(super) arguments: Vec<Argument>,
-    pub(super) elements: ExpressionElement,
-    pub(super) kind: ExpressionKind,
-    pub(super) negated: bool,
+    arguments: Vec<Argument>,
+    elements: ExpressionElement,
+    kind: ExpressionKind,
+    negated: bool,
+}
+
+impl ExpressionNode {
+    pub fn try_new_predicate(
+        predicate: PredicateHandle,
+        arguments: Vec<Argument>,
+        negated: bool,
+    ) -> Result<Self, TryNewExpressionError> {
+        ensure!(
+            arguments.len() == predicate.signature().arity(),
+            MismatchedAritySnafu {
+                signature: predicate.signature().clone(),
+                actual: arguments.len()
+            }
+        );
+
+        Ok(ExpressionNode {
+            arguments,
+            elements: ExpressionElement::Predicate(predicate),
+            kind: ExpressionKind::Conjunctive,
+            negated,
+        })
+    }
+
+    pub fn try_new_conjunction(
+        elements: Vec<ExpressionNode>,
+        negated: bool,
+    ) -> Result<Self, TryNewExpressionError> {
+        Self::try_new_compound_expression(elements, ExpressionKind::Conjunctive, negated)
+    }
+
+    pub fn try_new_disjunction(
+        elements: Vec<ExpressionNode>,
+        negated: bool,
+    ) -> Result<Self, TryNewExpressionError> {
+        Self::try_new_compound_expression(elements, ExpressionKind::Disjunctive, negated)
+    }
+
+    fn try_new_compound_expression(
+        elements: Vec<ExpressionNode>,
+        kind: ExpressionKind,
+        negated: bool,
+    ) -> Result<Self, TryNewExpressionError> {
+        ensure!(!elements.is_empty(), EmptyElementSnafu);
+
+        // Get unique arguments.
+        let mut arguments = Vec::new();
+        let all_arguments = elements
+            .iter()
+            .map(|expr| expr.arguments().clone())
+            .collect::<Vec<_>>()
+            .concat();
+
+        for arg in all_arguments {
+            if !arguments.contains(&arg) {
+                arguments.push(arg);
+            }
+        }
+
+        Ok(Self {
+            arguments,
+            elements: ExpressionElement::SubExpressions(elements),
+            kind,
+            negated,
+        })
+    }
 }
 
 impl Expression for ExpressionNode {
@@ -137,6 +206,14 @@ impl Display for ExpressionNode {
             ExpressionView::Disjunction(s) => s.fmt(f),
         }
     }
+}
+
+#[derive(Debug, Clone, Snafu, PartialEq, Eq)]
+pub enum TryNewExpressionError {
+    #[snafu(display("{signature} should accepts exact {} argument(s). Got: {actual}", signature.arity()))]
+    MismatchedArity { signature: Signature, actual: usize },
+    #[snafu(display("Expects at least one expression."))]
+    EmptyElement,
 }
 
 /// Upper-level representation of an expression node, providing classification
@@ -400,6 +477,52 @@ mod tests {
     }
 
     #[test]
+    fn predicate_try_new() {
+        let signature = Signature::new("pred".parse().unwrap(), 1);
+        let predicate = PredicateDefinition::new(signature, 0);
+        let predicate = PredicateHandle::from(predicate);
+        let expr = ExpressionNode::try_new_predicate(
+            predicate,
+            vec![Argument::Variable("X".parse().unwrap())],
+            false,
+        );
+        assert!(expr.is_ok());
+
+        let signature = Signature::new("pred".parse().unwrap(), 2);
+        let predicate = PredicateDefinition::new(signature, 0);
+        let predicate = PredicateHandle::from(predicate);
+        let expr = ExpressionNode::try_new_predicate(
+            predicate,
+            vec![Argument::Variable("X".parse().unwrap())],
+            false,
+        );
+        assert!(matches!(
+            expr,
+            Err(TryNewExpressionError::MismatchedArity {
+                signature: _,
+                actual: 1
+            })
+        ));
+    }
+
+    #[test]
+    fn conjunction_try_new() {
+        let expr = ExpressionNode::try_new_conjunction(
+            vec![make_predicate_expr(true), make_predicate_expr(true)],
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            expr.arguments,
+            vec![Argument::Variable("X".parse().unwrap())]
+        );
+        assert_eq!(expr.negated, false);
+
+        let expr = ExpressionNode::try_new_conjunction(vec![], false);
+        assert_eq!(expr, Err(TryNewExpressionError::EmptyElement));
+    }
+
+    #[test]
     fn predicate_view_display() {
         let expr = make_predicate_expr(true);
         let view = expr.view(false);
@@ -456,40 +579,35 @@ mod tests {
         let predicate = PredicateDefinition::new(signature, 0);
         let predicate = PredicateHandle::from(predicate);
 
-        ExpressionNode {
-            arguments: if has_arg {
+        ExpressionNode::try_new_predicate(
+            predicate,
+            if has_arg {
                 vec![Argument::Variable("X".parse().unwrap())]
             } else {
                 vec![]
             },
-            elements: ExpressionElement::Predicate(predicate),
-            kind: ExpressionKind::Conjunctive,
-            negated: false,
-        }
+            false,
+        )
+        .unwrap()
     }
 
     fn make_conjunction_expr() -> ExpressionNode {
-        ExpressionNode {
-            arguments: vec![Argument::Variable("X".parse().unwrap())],
-            elements: ExpressionElement::SubExpressions(vec![
-                make_predicate_expr(false),
-                make_predicate_expr(true),
-            ]),
-            kind: ExpressionKind::Conjunctive,
-            negated: false,
-        }
+        ExpressionNode::try_new_conjunction(
+            vec![make_predicate_expr(false), make_predicate_expr(true)],
+            false,
+        )
+        .unwrap()
     }
 
     fn make_combined_expr() -> ExpressionNode {
-        ExpressionNode {
-            arguments: vec![Argument::Variable("X".parse().unwrap())],
-            elements: ExpressionElement::SubExpressions(vec![
+        ExpressionNode::try_new_disjunction(
+            vec![
                 make_predicate_expr(false),
                 make_conjunction_expr(),
                 make_predicate_expr(true),
-            ]),
-            kind: ExpressionKind::Disjunctive,
-            negated: false,
-        }
+            ],
+            false,
+        )
+        .unwrap()
     }
 }

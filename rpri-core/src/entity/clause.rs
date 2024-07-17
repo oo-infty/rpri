@@ -151,7 +151,6 @@ pub enum TryNewRuleError {
 mod tests {
     use super::*;
 
-    use crate::entity::expression::{ExpressionElement, ExpressionKind};
     use crate::entity::predicate::{PredicateDefinition, PredicateHandle, Signature};
 
     #[test]
@@ -210,12 +209,12 @@ mod tests {
         let signature = Signature::new("pred".parse().unwrap(), 1);
         let predicate = PredicateDefinition::new(signature, 0);
         let predicate = PredicateHandle::from(predicate);
-        let body = ExpressionNode {
-            arguments: vec![Argument::Variable("Y".parse().unwrap())],
-            elements: ExpressionElement::Predicate(predicate),
-            kind: ExpressionKind::Conjunctive,
-            negated: false,
-        };
+        let body = ExpressionNode::try_new_predicate(
+            predicate,
+            vec![Argument::Variable("Y".parse().unwrap())],
+            false,
+        )
+        .unwrap();
 
         let rule = Rule::try_new(head, body);
 
@@ -246,23 +245,19 @@ mod tests {
         let predicate = PredicateDefinition::new(signature, 0);
         let predicate = PredicateHandle::from(predicate);
 
-        ExpressionNode {
-            arguments: vec![Argument::Variable("X".parse().unwrap())],
-            elements: ExpressionElement::Predicate(predicate),
-            kind: ExpressionKind::Conjunctive,
+        ExpressionNode::try_new_predicate(
+            predicate,
+            vec![Argument::Variable("X".parse().unwrap())],
             negated,
-        }
+        )
+        .unwrap()
     }
 
     fn make_conjunction_expr() -> ExpressionNode {
-        ExpressionNode {
-            arguments: vec![Argument::Variable("X".parse().unwrap())],
-            elements: ExpressionElement::SubExpressions(vec![
-                make_predicate_expr(false),
-                make_predicate_expr(true),
-            ]),
-            kind: ExpressionKind::Conjunctive,
-            negated: false,
-        }
+        ExpressionNode::try_new_conjunction(
+            vec![make_predicate_expr(false), make_predicate_expr(true)],
+            false,
+        )
+        .unwrap()
     }
 }
