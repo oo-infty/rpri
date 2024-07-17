@@ -3,7 +3,6 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use enum_dispatch::enum_dispatch;
 use snafu::prelude::*;
 
-use crate::entity::base::EntityId;
 use crate::entity::expression::{Argument, Expression, ExpressionNode, ExpressionView};
 
 use super::base::VariableIdentifier;
@@ -12,8 +11,6 @@ use super::base::VariableIdentifier;
 /// consists of facts and rules.
 #[enum_dispatch]
 pub trait Clause: Clone + PartialEq + Eq + Display {
-    fn id(&self) -> EntityId;
-
     fn arguments(&self) -> &Vec<Argument>;
 
     fn body(&self) -> Option<ExpressionView>;
@@ -36,26 +33,21 @@ impl Display for ConcreteClause {
 }
 
 /// Type that consists of only one expression of a predicate.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fact {
     expr: ExpressionNode,
-    entity_id: EntityId,
 }
 
 impl Fact {
-    pub fn try_new(expr: ExpressionNode, entity_id: EntityId) -> Result<Self, TryNewFactError> {
+    pub fn try_new(expr: ExpressionNode) -> Result<Self, TryNewFactError> {
         let view = expr.view(false).as_predicate();
         ensure!(view.is_some(), NotPredicateF { expr });
         ensure!(view.is_some_and(|(_, negated)| !negated), NegatedF { expr });
-        Ok(Self { expr, entity_id })
+        Ok(Self { expr })
     }
 }
 
 impl Clause for Fact {
-    fn id(&self) -> EntityId {
-        self.entity_id
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         self.expr.arguments()
     }
@@ -64,17 +56,6 @@ impl Clause for Fact {
         None
     }
 }
-
-impl PartialEq for Fact {
-    fn eq(&self, other: &Self) -> bool {
-        if self.entity_id == other.entity_id {
-            debug_assert_eq!(self.expr, other.expr);
-        }
-        self.entity_id == other.entity_id
-    }
-}
-
-impl Eq for Fact {}
 
 impl Display for Fact {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -93,19 +74,14 @@ pub enum TryNewFactError {
 
 /// Type that consists of one conclusion (head) and one expression of several
 /// premises (body).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     head: ExpressionNode,
     body: ExpressionNode,
-    entity_id: EntityId,
 }
 
 impl Rule {
-    pub fn try_new(
-        head: ExpressionNode,
-        body: ExpressionNode,
-        entity_id: EntityId,
-    ) -> Result<Self, TryNewRuleError> {
+    pub fn try_new(head: ExpressionNode, body: ExpressionNode) -> Result<Self, TryNewRuleError> {
         let view = head.view(false).as_predicate();
         ensure!(view.is_some(), HeadNotPredicateR { head });
         ensure!(
@@ -136,19 +112,11 @@ impl Rule {
             }
         );
 
-        Ok(Self {
-            head,
-            body,
-            entity_id,
-        })
+        Ok(Self { head, body })
     }
 }
 
 impl Clause for Rule {
-    fn id(&self) -> EntityId {
-        self.entity_id
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         self.head.arguments()
     }
@@ -157,18 +125,6 @@ impl Clause for Rule {
         Some(self.body.view(false))
     }
 }
-
-impl PartialEq for Rule {
-    fn eq(&self, other: &Self) -> bool {
-        if self.entity_id == other.entity_id {
-            debug_assert_eq!(self.head, other.head);
-            debug_assert_eq!(self.body, other.body);
-        }
-        self.entity_id == other.entity_id
-    }
-}
-
-impl Eq for Rule {}
 
 impl Display for Rule {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -201,21 +157,21 @@ mod tests {
     #[test]
     fn fact_build() {
         let expr = make_predicate_expr(false);
-        let fact = Fact::try_new(expr, 0).unwrap();
+        let fact = Fact::try_new(expr).unwrap();
         assert_eq!(
             fact.arguments(),
             &vec![Argument::Variable("X".parse().unwrap())]
         );
 
         let expr = make_conjunction_expr();
-        let fact = Fact::try_new(expr, 1);
+        let fact = Fact::try_new(expr);
         assert!(matches!(
             fact,
             Err(TryNewFactError::NotPredicate { expr: _ })
         ));
 
         let expr = make_predicate_expr(true);
-        let fact = Fact::try_new(expr, 0);
+        let fact = Fact::try_new(expr);
         assert!(matches!(fact, Err(TryNewFactError::Negated { expr: _ })));
     }
 
@@ -223,7 +179,7 @@ mod tests {
     fn rule_build() {
         let head = make_predicate_expr(false);
         let body = make_conjunction_expr();
-        let rule = Rule::try_new(head, body, 0).unwrap();
+        let rule = Rule::try_new(head, body).unwrap();
         assert_eq!(
             rule.arguments(),
             &vec![Argument::Variable("X".parse().unwrap())]
@@ -232,7 +188,7 @@ mod tests {
 
         let head = make_conjunction_expr();
         let body = make_conjunction_expr();
-        let rule = Rule::try_new(head, body, 0);
+        let rule = Rule::try_new(head, body);
         assert!(matches!(
             rule,
             Err(TryNewRuleError::HeadNotPredicate { head: _ })
@@ -240,7 +196,7 @@ mod tests {
 
         let head = make_predicate_expr(true);
         let body = make_conjunction_expr();
-        let rule = Rule::try_new(head, body, 0);
+        let rule = Rule::try_new(head, body);
         assert!(matches!(
             rule,
             Err(TryNewRuleError::NegatedHead { head: _ })
@@ -259,10 +215,9 @@ mod tests {
             elements: ExpressionElement::Predicate(predicate),
             kind: ExpressionKind::Conjunctive,
             negated: false,
-            entity_id: 0,
         };
 
-        let rule = Rule::try_new(head, body, 0);
+        let rule = Rule::try_new(head, body);
 
         match rule {
             Err(TryNewRuleError::FreeArgument {
@@ -277,12 +232,12 @@ mod tests {
     #[test]
     fn clause_display() {
         let expr = make_predicate_expr(false);
-        let fact = Fact::try_new(expr, 0).unwrap();
+        let fact = Fact::try_new(expr).unwrap();
         assert_eq!(fact.to_string(), "pred(X).");
 
         let head = make_predicate_expr(false);
         let body = make_conjunction_expr();
-        let rule = Rule::try_new(head, body, 0).unwrap();
+        let rule = Rule::try_new(head, body).unwrap();
         assert_eq!(rule.to_string(), r"pred(X) :- pred(X), \+pred(X).");
     }
 
@@ -296,7 +251,6 @@ mod tests {
             elements: ExpressionElement::Predicate(predicate),
             kind: ExpressionKind::Conjunctive,
             negated,
-            entity_id: 0,
         }
     }
 
@@ -309,7 +263,6 @@ mod tests {
             ]),
             kind: ExpressionKind::Conjunctive,
             negated: false,
-            entity_id: 0,
         }
     }
 }

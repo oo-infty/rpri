@@ -5,7 +5,7 @@ use std::slice::Iter;
 use enum_dispatch::enum_dispatch;
 
 use crate::entity::atom::AtomHandle;
-use crate::entity::base::{EntityId, VariableIdentifier};
+use crate::entity::base::VariableIdentifier;
 use crate::entity::predicate::{Predicate, PredicateHandle};
 
 /// Argument of predicates, which can be a variable or constant.
@@ -27,8 +27,6 @@ impl Display for Argument {
 /// An abstract form of expressions in Prolog, base of facts, rules and queries.
 #[enum_dispatch]
 pub trait Expression: Clone + Eq + PartialEq + Display {
-    fn id(&self) -> EntityId;
-
     fn arguments(&self) -> &Vec<Argument>;
 
     fn kind(&self) -> ExpressionKind;
@@ -60,20 +58,15 @@ impl ExpressionKind {
 }
 
 /// Basic node of expression trees.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpressionNode {
     pub(super) arguments: Vec<Argument>,
     pub(super) elements: ExpressionElement,
     pub(super) kind: ExpressionKind,
     pub(super) negated: bool,
-    pub(super) entity_id: EntityId,
 }
 
 impl Expression for ExpressionNode {
-    fn id(&self) -> EntityId {
-        self.entity_id
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         &self.arguments
     }
@@ -136,20 +129,6 @@ impl Expression for ExpressionNode {
     }
 }
 
-impl PartialEq for ExpressionNode {
-    fn eq(&self, other: &Self) -> bool {
-        if self.entity_id == other.entity_id {
-            debug_assert_eq!(self.arguments, other.arguments);
-            debug_assert_eq!(self.elements, other.elements);
-            debug_assert_eq!(self.kind, other.kind);
-            debug_assert_eq!(self.negated, other.negated);
-        }
-        self.entity_id == other.entity_id
-    }
-}
-
-impl Eq for ExpressionNode {}
-
 impl Display for ExpressionNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.view(false) {
@@ -192,17 +171,13 @@ impl Display for ExpressionView<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PredicateView<'a> {
     target: &'a ExpressionNode,
     negated: bool,
 }
 
 impl Expression for PredicateView<'_> {
-    fn id(&self) -> EntityId {
-        self.target.id()
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         self.target.arguments()
     }
@@ -226,18 +201,6 @@ impl Expression for PredicateView<'_> {
         }
     }
 }
-
-impl PartialEq for PredicateView<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.id() == other.id() {
-            debug_assert_eq!(self.target, other.target);
-            debug_assert_eq!(self.negated, other.negated);
-        }
-        self.id() == other.id()
-    }
-}
-
-impl Eq for PredicateView<'_> {}
 
 impl Display for PredicateView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -265,17 +228,13 @@ impl Display for PredicateView<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConjunctionView<'a> {
     target: &'a ExpressionNode,
     negate_each: bool,
 }
 
 impl Expression for ConjunctionView<'_> {
-    fn id(&self) -> EntityId {
-        self.target.id()
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         self.target.arguments()
     }
@@ -307,18 +266,6 @@ impl Expression for ConjunctionView<'_> {
     }
 }
 
-impl PartialEq for ConjunctionView<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.id() == other.id() {
-            debug_assert_eq!(self.target, other.target);
-            debug_assert_eq!(self.negate_each, other.negate_each);
-        }
-        self.id() == other.id()
-    }
-}
-
-impl Eq for ConjunctionView<'_> {}
-
 impl Display for ConjunctionView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let Some(first) = self.iter().next() else {
@@ -343,17 +290,13 @@ impl Display for ConjunctionView<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisjunctionView<'a> {
     target: &'a ExpressionNode,
     negate_each: bool,
 }
 
 impl Expression for DisjunctionView<'_> {
-    fn id(&self) -> EntityId {
-        self.target.id()
-    }
-
     fn arguments(&self) -> &Vec<Argument> {
         self.target.arguments()
     }
@@ -384,18 +327,6 @@ impl Expression for DisjunctionView<'_> {
         }
     }
 }
-
-impl PartialEq for DisjunctionView<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.id() == other.id() {
-            debug_assert_eq!(self.target, other.target);
-            debug_assert_eq!(self.negate_each, other.negate_each);
-        }
-        self.id() == other.id()
-    }
-}
-
-impl Eq for DisjunctionView<'_> {}
 
 impl Display for DisjunctionView<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -534,7 +465,6 @@ mod tests {
             elements: ExpressionElement::Predicate(predicate),
             kind: ExpressionKind::Conjunctive,
             negated: false,
-            entity_id: 0,
         }
     }
 
@@ -547,7 +477,6 @@ mod tests {
             ]),
             kind: ExpressionKind::Conjunctive,
             negated: false,
-            entity_id: 0,
         }
     }
 
@@ -561,7 +490,6 @@ mod tests {
             ]),
             kind: ExpressionKind::Disjunctive,
             negated: false,
-            entity_id: 0,
         }
     }
 }
