@@ -1,7 +1,7 @@
 use std::fmt::{Display, Error as FmtError, Formatter};
 use std::str::FromStr;
 
-use snafu::{prelude::*, OptionExt};
+use snafu::prelude::*;
 
 /// Type that distinguish entities from each other.
 pub type EntityId = usize;

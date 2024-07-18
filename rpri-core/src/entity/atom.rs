@@ -1,10 +1,11 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use crate::entity::base::{EntityId, Identifier};
 
 /// Trait of the fundamental element in Prolog.
-pub trait Atom: Clone + Eq + PartialEq + Display {
+pub trait Atom: Clone + Eq + PartialEq + Display + Hash {
     fn id(&self) -> EntityId;
 
     fn identifier(&self) -> &Identifier;
@@ -54,8 +55,14 @@ impl Display for AtomDefinition {
     }
 }
 
+impl Hash for AtomDefinition {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_usize(self.entity_id);
+    }
+}
+
 // Type that points to an `AtomDefinition` and behaves as an `Atom`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct AtomHandle {
     target: Arc<AtomDefinition>,
 }
