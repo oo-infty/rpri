@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::BitXor;
-use std::slice::Iter;
 
 use enum_dispatch::enum_dispatch;
 use snafu::prelude::*;
@@ -8,6 +7,9 @@ use snafu::prelude::*;
 use crate::entity::atom::AtomHandle;
 use crate::entity::base::VariableIdentifier;
 use crate::entity::predicate::{Predicate, PredicateHandle, Signature};
+use crate::utils::cursor::{
+    Cursor, CursorError, CursorIter, Direction, IndexCursor, SingleCursor, SliceCursor,
+};
 
 /// Argument of predicates, which can be a variable or constant. Only when this
 /// structure is associated with a predicate or its negation does the order of
@@ -36,7 +38,11 @@ pub trait Expression: Clone + Eq + PartialEq + Display {
 
     fn view(&self, negated: bool) -> ExpressionView;
 
-    fn iter(&self) -> ExpressionIter;
+    fn cursor(&self) -> ExpressionCursor;
+
+    fn iter(&self) -> CursorIter<ExpressionCursor> {
+        self.cursor().into_iter(Direction::Forward)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,22 +180,22 @@ impl Expression for ExpressionNode {
         }
     }
 
-    fn iter(&self) -> ExpressionIter {
+    fn cursor(&self) -> ExpressionCursor {
         match self.view(false) {
-            ExpressionView::Predicate(view) => ExpressionIter::Single {
-                inner: self,
+            ExpressionView::Predicate(view) => ExpressionCursor::Predicate {
+                cursor: SingleCursor::new(self),
                 negated: view.negated,
             },
             ExpressionView::Conjunction(view) => match &self.elements {
-                ExpressionElement::SubExpressions(expr) => ExpressionIter::Sequence {
-                    iter: expr.iter(),
+                ExpressionElement::SubExpressions(expr) => ExpressionCursor::SubExpressions {
+                    cursor: SliceCursor::new(expr),
                     negate_each: view.negate_each,
                 },
                 _ => unreachable!(),
             },
             ExpressionView::Disjunction(view) => match &self.elements {
-                ExpressionElement::SubExpressions(expr) => ExpressionIter::Sequence {
-                    iter: expr.iter(),
+                ExpressionElement::SubExpressions(expr) => ExpressionCursor::SubExpressions {
+                    cursor: SliceCursor::new(expr),
                     negate_each: view.negate_each,
                 },
                 _ => unreachable!(),
@@ -277,9 +283,9 @@ impl Expression for PredicateView<'_> {
         .into()
     }
 
-    fn iter(&self) -> ExpressionIter {
-        ExpressionIter::Single {
-            inner: self.target,
+    fn cursor(&self) -> ExpressionCursor {
+        ExpressionCursor::Predicate {
+            cursor: SingleCursor::new(self.target),
             negated: self.negated,
         }
     }
@@ -338,10 +344,10 @@ impl Expression for ConjunctionView<'_> {
         }
     }
 
-    fn iter(&self) -> ExpressionIter {
+    fn cursor(&self) -> ExpressionCursor {
         match &self.target.elements {
-            ExpressionElement::SubExpressions(expr) => ExpressionIter::Sequence {
-                iter: expr.iter(),
+            ExpressionElement::SubExpressions(expr) => ExpressionCursor::SubExpressions {
+                cursor: SliceCursor::new(expr),
                 negate_each: self.negate_each,
             },
             _ => unreachable!(),
@@ -400,10 +406,10 @@ impl Expression for DisjunctionView<'_> {
         }
     }
 
-    fn iter(&self) -> ExpressionIter {
+    fn cursor(&self) -> ExpressionCursor {
         match &self.target.elements {
-            ExpressionElement::SubExpressions(expr) => ExpressionIter::Sequence {
-                iter: expr.iter(),
+            ExpressionElement::SubExpressions(expr) => ExpressionCursor::SubExpressions {
+                cursor: SliceCursor::new(expr),
                 negate_each: self.negate_each,
             },
             _ => unreachable!(),
@@ -435,32 +441,60 @@ impl Display for DisjunctionView<'_> {
     }
 }
 
-pub enum ExpressionIter<'a> {
-    Single {
-        inner: &'a ExpressionNode,
+pub enum ExpressionCursor<'a> {
+    Predicate {
+        cursor: SingleCursor<'a, ExpressionNode>,
         negated: bool,
     },
-    Sequence {
-        iter: Iter<'a, ExpressionNode>,
+    SubExpressions {
+        cursor: SliceCursor<'a, ExpressionNode>,
         negate_each: bool,
     },
-    None,
 }
 
-impl<'a> Iterator for ExpressionIter<'a> {
+impl<'a> Cursor for ExpressionCursor<'a> {
     type Item = ExpressionView<'a>;
+    type Position = usize;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn current(&self) -> Option<Self::Item> {
         match self {
-            ExpressionIter::Single { inner, negated } => {
-                let res = inner.view(inner.negated.bitxor(*negated));
-                *self = ExpressionIter::None;
-                Some(res)
-            }
-            ExpressionIter::Sequence { iter, negate_each } => {
-                iter.next().map(|expr| expr.view(*negate_each))
-            }
-            ExpressionIter::None => None,
+            Self::Predicate { cursor, negated } => cursor
+                .current()
+                .map(|expr| expr.view(expr.negated.bitxor(negated))),
+            Self::SubExpressions {
+                cursor,
+                negate_each,
+            } => cursor.current().map(|expr| expr.view(*negate_each)),
+        }
+    }
+
+    fn position(&self) -> Result<Self::Position, CursorError> {
+        match self {
+            Self::Predicate { cursor, .. } => cursor.position(),
+            Self::SubExpressions { cursor, .. } => cursor.position(),
+        }
+    }
+
+    fn move_toward(&mut self, direction: Direction) -> bool {
+        match self {
+            Self::Predicate { cursor, .. } => cursor.move_toward(direction),
+            Self::SubExpressions { cursor, .. } => cursor.move_toward(direction),
+        }
+    }
+}
+
+impl<'a> IndexCursor for ExpressionCursor<'a> {
+    fn len(&self) -> Self::Position {
+        match self {
+            Self::Predicate { cursor, .. } => cursor.len(),
+            Self::SubExpressions { cursor, .. } => cursor.len(),
+        }
+    }
+
+    fn set(&mut self, index: Self::Position) -> bool {
+        match self {
+            Self::Predicate { cursor, .. } => cursor.set(index),
+            Self::SubExpressions { cursor, .. } => cursor.set(index),
         }
     }
 }
