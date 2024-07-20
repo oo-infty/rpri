@@ -254,6 +254,12 @@ pub struct PredicateView<'a> {
     negated: bool,
 }
 
+impl PredicateView<'_> {
+    pub fn negated(&self) -> bool {
+        self.negated
+    }
+}
+
 impl Expression for PredicateView<'_> {
     fn arguments(&self) -> &Vec<Argument> {
         self.target.arguments()
